@@ -1,0 +1,13 @@
+2048 AI Design
+
+4x4 Grid array indexes:
+
+x: 0 1 2 3
+y:--------
+ 0|x x x x
+ 1|x x x x
+ 2|x x x x
+ 3|x x x x
+
+ 
+

@@ -32,13 +32,6 @@
       <br><a class="ai-button">AI</a>
     </div>
 
-    <div class="moves-table">
-      <div class="moves-row">
-        <div class="moves-ai-label">AI:</div><div class="moves-ai">0</div><div class="moves-ai-percent">0%</div>
-      </div><div class="moves-row">
-        <div class="moves-human-label">Human/other:</div><div class="moves-human">0</div
-      </div>
-    </div>
     <div class="debug">&nbsp;</div>
 
     <div class="game-container">

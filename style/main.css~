@@ -517,33 +517,7 @@ hr {
   line-height: 42px;
   margin-bottom: 0; }
 
-.debug {
-  font-style: italic;
-  white-space: pre;
-}
-
-
-.moves-row         { display: table-row; } 
-.moves-ai-label   { display: table-cell; padding: 3px 10px;}
-.moves-ai         { display: table-cell; padding: 3px 10px;}
-.moves-ai-percent { display: table-cell; padding: 3px 10px;}
-.moves-human-label { display: table-cell; padding: 3px 10px;}
-.moves-human { display: table-cell; padding: 3px 10px;}
-
 .restart-button {
-  display: inline-block;
-  background: #8f7a66;
-  border-radius: 3px;
-  padding: 0 20px;
-  text-decoration: none;
-  color: #f9f6f2;
-  height: 40px;
-  line-height: 42px;
-  display: block;
-  text-align: center;
-  float: right; }
-
-.ai-button {
   display: inline-block;
   background: #8f7a66;
   border-radius: 3px;

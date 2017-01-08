@@ -3,14 +3,8 @@ function HTMLActuator() {
   this.scoreContainer   = document.querySelector(".score-container");
   this.bestContainer    = document.querySelector(".best-container");
   this.messageContainer = document.querySelector(".game-message");
-  this.messageDebug = document.querySelector(".debug");
-  this.movesAI = document.querySelector(".moves-ai");
-  this.movesAIPercent = document.querySelector(".moves-ai-percent");
-  this.movesHuman = document.querySelector(".moves-human");
 
   this.score = 0;
-  this.movecountAI = 0;
-  this.movecountHuman = 0;
 }
 
 HTMLActuator.prototype.actuate = function (grid, metadata) {
@@ -29,14 +23,6 @@ HTMLActuator.prototype.actuate = function (grid, metadata) {
 
     self.updateScore(metadata.score);
     self.updateBestScore(metadata.bestScore);
-
-
-    self.movesAI.textContent = metadata.movecountAI;
-    self.movesHuman.textContent = metadata.movecountHuman;        
-    if (metadata.movecountAI === 0 && metadata.movecountHuman === 0)
-      self.movesAIPercent.textContent = "0%"
-    else
-      self.movesAIPercent.textContent = Math.round(metadata.movecountAI / (metadata.movecountAI + metadata.movecountHuman) * 100, 2) + "%"
 
     if (metadata.terminated) {
       if (metadata.over) {
@@ -76,14 +62,7 @@ HTMLActuator.prototype.addTile = function (tile) {
   this.applyClasses(wrapper, classes);
 
   inner.classList.add("tile-inner");
-//  var x = 0;
-//  var val = tile.value;
-//  while (val > 1)
-//    {
-//    val = val / 2;
-//    x++;
-//}
-  inner.textContent = tile.value; //x;
+  inner.textContent = tile.value;
 
   if (tile.previousPosition) {
     // Make sure that the tile gets rendered in the previous position first
@@ -158,17 +137,3 @@ HTMLActuator.prototype.clearMessage = function () {
   this.messageContainer.classList.remove("game-won");
   this.messageContainer.classList.remove("game-over");
 };
-
-
-HTMLActuator.prototype.debug = function(message) {
-  if (this.messageDebug.textContent != "")
-    this.messageDebug.textContent += "\r\n";    
-  this.messageDebug.textContent += message;
-};
-
-HTMLActuator.prototype.debugClear = function(message) {
-  this.messageDebug.textContent = "";
-};
-
-
-
