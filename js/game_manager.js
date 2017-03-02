@@ -3,13 +3,16 @@ function GameManager(size, InputManager, Actuator, StorageManager) {
   this.inputManager   = new InputManager;
   this.storageManager = new StorageManager;
   this.actuator       = new Actuator;
-
+ 
   this.startTiles     = 2;
 
   this.inputManager.on("move", this.move.bind(this));
   this.inputManager.on("restart", this.restart.bind(this));
   this.inputManager.on("keepPlaying", this.keepPlaying.bind(this));
   this.inputManager.on("ai", this.ai.bind(this));
+  this.inputManager.on("aiStop", this.aiStop.bind(this));
+  this.inputManager.on("aiStep", this.aiStep.bind(this));
+  this.aiIsRunning = false;
 
   this.setup();
 }
@@ -58,7 +61,9 @@ GameManager.prototype.setup = function () {
     // Add the initial tiles
     this.addStartTiles();
   }
-
+  this.aiStep = false;
+  this.aiIsRunning = false;
+  
   // Update the actuator
   this.actuate();
   this.actuator.debugClear();
@@ -294,15 +299,45 @@ GameManager.prototype.positionsEqual = function (first, second) {
 GameManager.prototype.ai = function () {
   this.actuator.debugClear();
 
+  if (!this.aiIsRunning)
+  {
+    var board = this.loadBoard();
 
-  var board = this.loadBoard();
-
-
-//  this.lameAlgorithm1(board);
-//  this.lameAlgorithm2(board);
-  this.scoreAlgorithm1(board);
-
+    console.clear();
+    this.aiIsRunning = true;
+    this.aiStep = false;
+    
+  //  this.lameAlgorithm1(board);
+  //  this.lameAlgorithm2(board);
+  //  this.scoreAlgorithm1(board);
+  //  this.scoreAlgorithm2(board);
+  //    this.snakeAlgorithm1(board);
+    this.snakeAlgorithm2(board);
+  }
 };
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Stop the AI!
+GameManager.prototype.aiStop = function () {
+  this.aiIsRunning = false;
+  this.aiStep = false;
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Step the AI!
+GameManager.prototype.aiStep = function () {
+  console.clear();
+  this.aiStep = true;
+  if (!this.aiIsRunning)
+  {
+    var board = this.loadBoard();
+    this.aiIsRunning = true;
+    this.snakeAlgorithm2(board);
+  }
+};
+
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -312,7 +347,7 @@ GameManager.prototype.loadBoard = function() {
 
   this.grid.eachCell(function (x, y, tile) {
     if (tile) {
-      board[y][x] = tile.value;
+      board[x][y] = tile.value;
     }
   });
 
@@ -325,6 +360,7 @@ GameManager.prototype.loadBoard = function() {
 GameManager.prototype.findLargestValue = function (board) {
   var x, y, val = -1;  
 
+//console.debug(board);
   for (var i = 0; i < 4; ++i) {
     for (var j = 0; j < 4; ++j) {    
       if (board[i][j] > val) { 
@@ -341,17 +377,13 @@ GameManager.prototype.findLargestValue = function (board) {
 ////////////////////////////////////////////////////////////////////////////////
 // A simple "move upper left" or "move upper right" algorithm
 GameManager.prototype.lameAlgorithm1 = async function(board) {
-  var cell = this.findLargestValue(board);
-
-  // Find the best match
   var x;
   var y;
   var moved = false;
   var moves = 0;
-
+  var cell = this.findLargestValue(board);
   
   do {
-
     x = cell.x
     y = cell.y
 
@@ -364,6 +396,7 @@ GameManager.prototype.lameAlgorithm1 = async function(board) {
     if (!moved) {
       moved = this.move(0, true);  //up
     }
+
     var board = this.loadBoard();
     var cell = this.findLargestValue(board);
     if (moved) {
@@ -399,86 +432,136 @@ GameManager.prototype.lameAlgorithm2 = async function(board) {
 ////////////////////////////////////////////////////////////////////////////////
 // Move to the most advantageous postion based on a score
 GameManager.prototype.scoreAlgorithm1 = async function(board) {
-  var moves = 0;
   var tmpBoard;
   var baseScore;
   var upScore;
   var rightScore;
   var leftScore;  
-  var direction = "none";
   var moved = true;
 
   while (moved){
     moved = false;
     board = this.loadBoard();
     baseScore = this.scoreBoard(board);
-    direction = "none";
 
-//this.actuator.debug(board);
-//this.actuator.debug(baseScore);
+    // Test each direction and score it
     tmpBoard = this.testMove(board, 0);  // Up
     upScore = this.scoreBoard(tmpBoard);
-//this.actuator.debug(tmpBoard + " up");
-//this.actuator.debug(upScore);
-    
     tmpBoard = this.testMove(board, 1);  // Right
     rightScore = this.scoreBoard(tmpBoard);
-//this.actuator.debug(tmpBoard);
-//this.actuator.debug(upScore);
-//this.actuator.debug("duh");
     tmpBoard = this.testMove(board, 3);  // Left
     leftScore = this.scoreBoard(tmpBoard);
-//this.actuator.debug(tmpBoard + " left");
-//this.actuator.debug(upScore);
-
-
-
     
-    if (leftScore > rightScore) {
-      if (leftScore > upScore) {
-        direction = "Left";
+    // Move to the best locaion
+    if (leftScore > rightScore) 
+      if (leftScore > upScore) 
         moved = this.move(3, true); // left
-      }
-      else {
-        direction = "Up1";
+      else 
         moved = this.move(0, true); // up
-      }
-    }
-    else {
-      if (rightScore > upScore) {
-        direction = "Right";
+    else 
+      if (rightScore > upScore) 
         moved = this.move(1, true); // right
-      }
-      else {
-        direction = "Up";
+      else 
         moved = this.move(0, true); // up
-      }
-    }
-    // If nothing happened, try moving left, right, up, and then, the worst: down:
-    if (!moved)  
-      moved = this.move(3, true); // left
-    if (!moved)  
-      moved = this.move(1, true); // right
+
+    // If nothing happened, do a random move
     if (!moved)
-      moved = this.move(0, true); // up
-    if (!moved)  
-      moved = this.move(2, true); // down, oh no!
+      moved = this.moveRandom();
       
-//this.actuator.debugClear();
-//this.actuator.debug("Base: " + baseScore);
-//this.actuator.debug("Up: " + upScore);
-//this.actuator.debug("Right: " + rightScore);
-//this.actuator.debug("Left: " + leftScore);
-//this.actuator.debug("Direction: " + direction);
     await this.sleep(50);
-    if (moved) {
-      moves++;
+  }
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Move to the most advantageous postion based on a score, looking 2 moves ahead
+GameManager.prototype.scoreAlgorithm2 = async function(board) {
+  var tmpBoard;
+  var childBoard;
+  var baseScore;
+  var u, r, l;
+  var cu, cr, cl;
+  var moved = true;
+
+  while (moved){
+    moved = false;
+    board = this.loadBoard();
+    baseScore = this.scoreBoard(board);
+
+    tmpBoard = this.testMove(board, 0);  // Up
+    u = this.scoreBoard(tmpBoard);
+    childBoard = this.testMove(tmpBoard, 0)
+    cu = this.scoreBoard(board);
+    childBoard = this.testMove(tmpBoard, 1)
+    cr = this.scoreBoard(board);
+    childBoard = this.testMove(tmpBoard, 3)
+    cl = this.scoreBoard(board);
+    u += Math.max(cu, cr, cl);
       
-    }
+    tmpBoard = this.testMove(board, 1);  // Right
+    r = this.scoreBoard(tmpBoard);
+    childBoard = this.testMove(tmpBoard, 0)
+    cu = this.scoreBoard(board);
+    childBoard = this.testMove(tmpBoard, 1)
+    cr = this.scoreBoard(board);
+    childBoard = this.testMove(tmpBoard, 3)
+    cl = this.scoreBoard(board);
+    r += Math.max(cu, cr, cl);
+
+    tmpBoard = this.testMove(board, 3);  // Left
+    l = this.scoreBoard(tmpBoard);
+    childBoard = this.testMove(tmpBoard, 0)
+    cu = this.scoreBoard(board);
+    childBoard = this.testMove(tmpBoard, 1)
+    cr = this.scoreBoard(board);
+    childBoard = this.testMove(tmpBoard, 3)
+    cl = this.scoreBoard(board);
+    l += Math.max(cu, cr, cl);
+    
+    if (l > r) 
+      if (l > u) 
+        moved = this.move(3, true); // left
+      else 
+        moved = this.move(0, true); // up
+    else 
+      if (r > u) 
+        moved = this.move(1, true); // right
+      else 
+        moved = this.move(0, true); // up
+
+    // If nothing happened, do a random move
+    if (!moved)
+      moved = this.moveRandom();
+      
+    await this.sleep(50);
+  }
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Make a random move, and then move back QUICK if it is a bad direction!
+GameManager.prototype.moveRandom = function() {
+  var moved = false;
+
+console.debug("--------------------> RANDOM!!!");
+
+  moved = this.move(0, true); // up
+
+  if (!moved)
+    moved = this.move(3, true); // left
+  
+  if (!moved) 
+    moved = this.move(1, true); // right
+
+  if (!moved) { 
+    moved = this.move(2, true); // down, oh no!
+    if (moved)
+      moved = this.move(0, true); // up
   }
   
-  return moves;
+  return moved;
 };
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // Execute a move in a temporary board
@@ -597,17 +680,610 @@ GameManager.prototype.scoreBoard = function(board) {
     
   // Values are added and then divided by the number of cells
   // So, higher values are weighted more...
-
   score += sum / cells;
-//this.actuator.debug(sum);  
-//this.actuator.debug(cells);
-//this.actuator.debug(score);
     
   return score;
 };
 
 
+////////////////////////////////////////////////////////////////////////////////
+// Call with await this.sleep(50);
+// Need async before function in declaration:  myFunction = async function(){};
 GameManager.prototype.sleep = function(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 };
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Snake in descending order
+GameManager.prototype.snakeAlgorithm1 = async function(board) {
+  var moved = true;
+  var cell;
+  var canMove;
+  var direction;
+  
+  while (moved){
+    moved = false;
+    board = this.loadBoard();
+    
+    cell = this.findLargestValue(board);
+//console.debug("largest x = " + cell.x + ", y = " + cell.y + ", val = " + cell.val);
+    if (cell.x != 0 || cell.y != 0)
+    {
+      // See if we can move left
+      if (cell.x != 0)
+      {
+        canMove = true;
+        for (var i = 0; i < cell.x; ++i)
+        {
+          if (board[i][cell.y] != 0)
+            canMove = false;
+        }
+        if (canMove)
+          moved = this.move(3, true); // left
+      }
+      if (!moved && cell.y !=0)
+      {
+        // See if we can move up
+        canMove = true;
+        for (var i = 0; i < cell.y; ++i)
+        {
+          if (board[cell.x][i] != 0)
+            canMove = false;
+        }
+        if (canMove)
+          moved = this.move(0, true); // up
+      }
+      if (!moved)
+      {
+        // OK, try and build up this cell
+        direction = this.buildUp(board, 0, 0, cell.val);
+          if (direction != -1)
+            moved = this.move(direction, true); 
+      } 
+    }
+    else
+    {
+      // Move to the next
+      direction = this.buildUp(board, 0, 0, cell.val);
+          if (direction != -1)
+            moved = this.move(direction, true); 
+    }
+    
+    // If nothing happened, do a random move
+//    if (!moved)
+//      moved = this.moveRandom();
+      
+    await this.sleep(0000);
+  }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Determine how to increase a specific cell
+GameManager.prototype.buildUp = function(board, x, y, val) {
+  var direction = -1;
+  var canRight = false;
+  var canLeft = false;
+  var canUp = false;
+  var canDown = false;
+  var stop = false;
+
+//console.debug("In " + x + ", " + y + ", " + val);
+
+  // Look for an exact match
+  // Check to the left
+  for (var i = x - 1; i >= 0  && direction == -1; --i)
+    if (board[i][y] != 0)
+    {
+      if (board[i][y] == board[x][y])
+        direction = 1; // right
+      break;  // Need to break on any non-zero
+    }
+    else
+      canRight = true;
+    
+  // Check to the right
+  for (var i = x + 1; i <= 3  && direction == -1; ++i)
+    if (board[i][y] != 0)
+    {
+      if (board[i][y] == board[x][y])
+        direction = 3; // left
+      break;  // Need to break on any non-zero
+    }
+    else
+      canLeft = true;
+      
+  // Check upI
+  for (var j = y - 1; j >= 0 && direction == -1; --j)
+    if (board[x][j] != 0)
+    {
+      if (board[x][j] == board[x][y])
+        direction = 2; // down
+      break;  // Need to break on any non-zero
+    }
+    else
+      canDown = true;
+
+  // Check down
+  for (var j = y + 1; j <= 3 && direction == -1; ++j)
+    if (board[x][j] != 0)
+    {
+      if (board[x][j] == board[x][y])
+        direction = 0; // up
+      break;  // Need to break on any non-zero
+    }
+    else
+      canUp = true;
+//console.debug("Exact from: " + direction);
+
+  // Look for something EQUAL you can move inline
+  if (direction == -1)
+    // Blank cells below, look right
+    for (var j = y + 1, stop = false; j <= 3 && direction == -1 && canUp && board[x][j] == 0 && !stop; ++j)
+      // Look right
+      for (var i = x + 1; i < 4; ++i)
+      {
+        if (board[i][j] != 0)
+        {
+          if (board[i][j] == board[x][y]) 
+            if (i == 3)
+              direction = 3; // left
+            else if (board[i + 1][j] != board[x][y]) // avoid accidental combine
+              direction = 3;
+          else
+            stop = true;  // Have to stop because a bigger number will come through
+          break;
+        }
+      }
+      
+    // Blank cells below, look right
+    for (var j = y + 1, stop = false; j <= 3 && direction == -1 && canUp && board[x][j] == 0 && !stop; ++j)     
+    {
+      // Look left
+      for (var i = x - 1; i >= 0; --i)
+        if (board[i][j] != 0)
+        {
+          if (board[i][j] == board[x][y] && i >= 0 && board[i - 1][j] != board[x][y]) // avoid accidental combine
+            direction = 1; // right
+          else
+            stop = true;
+          break;
+        }
+    }
+    
+  // Look for something smaller in direct path
+  if (direction == -1)
+    for (var j = y + 1; j <= 3 && direction == -1 && canUp; ++j) 
+      if (board[x][j] > 0)
+      {
+        if (board[x][j] < board[x][y])
+          direction = 0;  // up
+        break;
+      }
+    
+  // Look for something SMALLER you can move inline
+  if (direction == -1)
+    // Blank cells below, look right
+    for (var j = y + 1, stop = false; j <= 3 && direction == -1 && canUp && board[x][j] == 0 && !stop; ++j)
+      // Look right
+      for (var i = x + 1; i < 4; ++i)
+      {
+        if (board[i][j] != 0)
+        {
+          if (board[i][j] < board[x][y])
+            direction = 3; // left
+          else
+            stop = true;  // Have to stop because a bigger number will come through
+          break;
+        }
+      }
+      
+    // Blank cells below, look right
+    for (var j = y + 1, stop = false; j <= 3 && direction == -1 && canUp && board[x][j] == 0 && !stop; ++j)     
+    {
+      // Look left
+      for (var i = x - 1; i >= 0; --i)
+        if (board[i][j] != 0)
+        {
+          if (board[i][j] < board[x][y])
+            direction = 1; // right
+          else
+            stop = true;
+          break;
+        }
+    }    
+/*      
+    if (canLeft)
+      direction = 3;
+    else if (canRight)
+      direction = 1;
+    else if (canDown)
+      direction = 0;
+*/
+//console.debug("Offset equal from: " + direction);
+
+/*
+  // If no exact match, but open spaces, just move one
+  if (direction == -1)
+    if (canUp)
+      direction = 0;
+    else if (canLeft)
+      direction = 3;
+    else if (canRight)
+      direction = 1;
+    else if (canDown)
+      direction = 0;
+    else
+      direction = this.buildUp(board, x, y + 1, board[x][y]);
+      
+
+console.debug("Blank from: " + direction);
+*/      
+  if (direction == -1 && y != 3)
+    direction = this.buildUp(board, x, y + 1, board[x][y]);
+      
+  return direction;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Snake in descending order
+GameManager.prototype.snakeAlgorithm2 = async function(board) {
+  var moved = true;
+  var ub, rb, db, rb;
+  var cell = this.findLargestValue(board);
+  var x = cell.x;
+  var y = cell.y;
+  var done = false;
+  var direction = -1;
+  var keepLeft, keepUp, keepRight;
+
+
+//console.debug("Max at " + x + ", " + y); 
+ 
+  while (moved && this.aiIsRunning)
+  {
+    keepLeft = false;
+    keepUp = false;
+    keepRight = false;
+    moved = false;
+    direction = -1;
+    done = false;
+      x=0;y=0;
+    
+    // Save each move possible so we can find out what is best
+    board = this.loadBoard();
+    ub = this.testMove2(board, 0);  // Up
+    rb = this.testMove2(board, 1);  // Right
+    db = this.testMove2(board, 2);  // Down
+    lb = this.testMove2(board, 3);  // Left
+
+    if (board[0][0] != 0)
+    {
+      keepUp = true;
+      keepLeft = true;
+    }
+
+
+//console.debug(board);  
+//console.debug("U=" + ub);
+//console.debug("R=" + rb);
+//console.debug("D=" + db);
+//console.debug("L=" + lb);
+
+
+      // Assuming starting in the upper left and going right
+      while (direction == -1)  
+      {
+        direction = this.processCell(board, x, y);
+        if (direction == -2)
+        {
+          direction = -1;
+          direction = this.processCell(board, x, y + 1);          
+        
+        }
+ 
+        // if nothing is done, move to the next cell
+        if (direction == -1)
+        {
+          if (y == 0 || y == 2)
+          {
+            x++;
+            if (x == 4)
+            {
+              x--;
+              y++;
+              if (y == 1 && board[0][0] != 0 && board[1][0] != 0 && board[3][0] != 0 && board[3][0] != 0)
+              {
+                keepRight = true;
+                keepLeft = false;
+              }
+            }
+          }
+          else
+          {
+            if (y == 1 && board[0][0] != 0 && board[1][0] != 0 && board[3][0] != 0 && board[3][0] != 0)
+            {
+              keepRight = true;
+              keepLeft = false;
+            }
+            --x;
+            if (x == -1)
+            {
+              ++x;
+              ++y;
+            }
+          }
+          if (y == 4)
+            break;
+        }
+      }
+
+//console.debug(direction);  
+
+    // If untrapping, ignore the safe direction flags
+    if (this.unTrap && direction >= 0)
+    {
+      this.unTrap = false;
+      moved = this.move(direction, true);
+    }
+    else
+    {
+      if (direction == 0)
+        moved = this.move(direction, true);
+        
+      if (direction == 1 && !keepLeft)
+        moved = this.move(direction, true);
+            
+      if (direction == 2 && !keepUp)
+        moved = this.move(direction, true);
+
+      if (direction == 3 && !keepRight)
+        moved = this.move(direction, true);
+    }
+    
+    // If nothing happened, do a random move
+    if (!moved)
+      moved = this.moveRandom();
+
+    // If we are just doing a step, bail.  Otherwise, delay a bit.
+    if (this.aiStep)
+    {
+      this.aiStep = false
+      this.aiIsRunning = false;
+    }
+    else
+      await this.sleep(0);
+  }
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Process a cell
+GameManager.prototype.processCell = function(board, x, y) {
+  var direction = -1;
+  var ub = this.testMove2(board, 0);  // Up
+  var rb = this.testMove2(board, 1);  // Right
+  var db = this.testMove2(board, 2);  // Down
+  var lb = this.testMove2(board, 3);  // Left
+
+  // See if the this cell grow
+  if (y == 0 || y == 2)
+  {
+    if (lb[x][y] > board[x][y] && !this.keepRight)
+      direction = 3; // left
+    else if (ub[x][y] > board[x][y])
+      direction = 0; // up
+  }
+  else
+  {
+    if (ub[x][y] > board[x][y])
+      direction = 0; // up
+    else if (rb[x][y] > board[x][y] && !this.keepLeft)
+      direction = 1; // right
+  }
+  
+if (direction != -1)
+  console.debug("ProcessCell: " + x + ", " + y + ": " + direction); 
+  
+  // if nothing is done, check and resolve trapped cell before moving on
+  if (direction == -1)
+  {
+    if (this.isTrapped(board, x, y))
+    {
+      direction = this.freeTrapped(board, x, y);  
+      if (direction == -1)
+        direction = -2;
+      console.debug("ProcessCell: " + x + ", " + y + ": " + direction + " (trapped)");
+    }
+    else
+      console.debug("ProcessCell: " + x + ", " + y + ": " + direction);
+  }
+  return direction;
+};
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Test a move in a direction
+GameManager.prototype.testMove2 = function(origBoard, direction) {
+  var board = JSON.parse(JSON.stringify(origBoard));  // make a full copy
+  var retrace;
+
+  if (direction === 0) { // Up
+    for (var x = 0; x < 4; ++x){
+      for (var y = 0; y < 3; ++y) {
+        // Collapse the space
+        retrace = false;
+        for (var i = 0; i < (3 - y) && board[x][y] === 0; ++i) {
+          for (var yWalk = y; yWalk < 3; ++yWalk) {
+            board[x][yWalk] = board[x][yWalk + 1];
+            if (board[x][yWalk] != 0)
+              retrace = true;
+          }
+          board[x][3] = 0;
+        }
+        if (retrace)
+          y = -1;
+        else
+        // Collapse the number
+        if (board[x][y] === board[x][y + 1]) {
+          board[x][y] *= 2;
+          board[x][y + 1] = 0;
+        }
+      }
+    }
+  }
+  if (direction === 3) { // Left
+    for (var y = 0; y < 4; ++y){
+      for (var x = 0; x < 3; ++x) {
+        // Collapse the space
+        retrace = false;
+        for (var i = 0; i < (3 - x) && board[x][y] === 0; ++i) {
+          for (var xWalk = x; xWalk < 3; ++xWalk) {
+            board[xWalk][y] = board[xWalk + 1][y];
+            if (board[xWalk][y] != 0)
+              retrace = true;
+          }
+          board[3][y] = 0;
+        }
+        if (retrace)
+          x = -1;
+        else
+        // Collapse the number
+        if (board[x][y] === board[x + 1][y]) {
+          board[x][y] *= 2;
+          board[x + 1][y] = 0;
+        }
+      }
+    }
+  }
+  if (direction === 2) { // Down
+    for (var x = 0; x < 4; ++x){
+      for (var y = 3; y > 0; --y) {
+        // Collapse the space
+        retrace = false;
+        for (var i = 0; i < y && board[x][y] === 0; ++i) {
+          for (var yWalk = y; yWalk > 0; --yWalk) {
+            board[x][yWalk] = board[x][yWalk - 1];
+            if (board[x][yWalk] != 0)
+              retrace = true;
+          }
+          board[x][0] = 0;
+        }
+        if (retrace)
+          y = 3;
+        else
+        // Collapse the number
+        if (board[x][y] === board[x][y - 1]) {
+          board[x][y] *= 2;
+          board[x][y - 1] = 0;
+        }
+      }
+    }
+  }
+// TODO: 2020 goes to 0022  
+  if (direction === 1) { // Right
+    for (var y = 0; y < 4; ++y){
+      for (var x = 3; x > 0; --x) {
+        // Collapse the space
+        retrace = false;
+        for (var i = 0; i < x && board[x][y] === 0; ++i) {
+          for (var xWalk = x; xWalk > 0; --xWalk) {
+            board[xWalk][y] = board[xWalk - 1][y];
+            if (board[xWalk][y] != 0 || board[xWalk - 1][y] != 0)
+              retrace = true;
+          }
+          board[0][y] = 0;
+        }
+        if (retrace)
+          x = 3;
+        else
+        // Collapse the number
+        if (board[x][y] === board[x - 1][y]) {
+          board[x][y] *= 2;
+          board[x - 1][y] = 0;
+        }
+      }
+    }
+  } 
+  return board;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// See if a cell is trapped by a higher value
+GameManager.prototype.isTrapped = function(board, x, y) {
+  var x2, y2;
+  var trapped = false;
+
+  if (y == 0 || y == 2)  // check right and down
+  {
+    x2 = x + 1;
+    y2 = y + 1;
+    if (x2 < 4)
+    {
+      if (board[x2][y] > board[x][y])// && board[x][y2] > board[x][y])
+        trapped = true;
+      // TODO: trigger a "build up" if the next cell is bigger and the lower is OK
+    }
+    else if (board[x][y2] > board[x][y])
+      trapped = true;
+  }
+  else if (y == 1 || y == 3)
+  {
+    x2 = x - 1;
+    if (y == 1)
+      y2 = y + 1;
+    if (x2 >= 0)
+    {
+      if (board[x2][y] > board[x][y])// && board[x][y2] > board[x][y])
+        trapped = true;
+    }
+    else if (board[x][y2] > board[x][y])
+      trapped = true;
+  }      
+  return trapped;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Try and untrap this cell!
+GameManager.prototype.freeTrapped = function(board, x, y) {
+  var x2, y2;
+  var direction = -1;
+  var tmpBoard;
+
+  // Try and free under it
+  if (y == 0 || y == 2)
+  {
+    tmpBoard = this.testMove2(board, 3); // Left
+console.debug(tmpBoard);
+    if (tmpBoard[x][y + 1] < board[x][y ] && board != tmpBoard)
+      direction = 3;
+    else   
+    {
+      tmpBoard = this.testMove2(board, 1); // Right
+      if (tmpBoard[x][y + 1] < board[x][y ] && board != tmpBoard)
+        direction = 1;
+    }
+  }
+  if (y == 1)
+  {
+    tmpBoard = this.testMove2(board, 1); // Right
+    if (tmpBoard[x][y + 1] < board[x][y ] && board != tmpBoard)
+      direction = 1;
+    else   
+    {
+      tmpBoard = this.testMove2(board, 3); // Left
+      if (tmpBoard[x][y + 1] < board[x][y ] && board != tmpBoard)
+        direction = 3;
+    }
+  }
+  
+  this.unTrap = true;
+
+  return direction;
+}
+
+
+
+
 

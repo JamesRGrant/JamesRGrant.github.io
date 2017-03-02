@@ -35,6 +35,7 @@ KeyboardInputManager.prototype.listen = function () {
   var self = this;
 
   var map = {
+    32: -1, // Space = step
     38: 0, // Up
     39: 1, // Right
     40: 2, // Down
@@ -58,10 +59,12 @@ KeyboardInputManager.prototype.listen = function () {
     if (!modifiers) {
       if (mapped !== undefined) {
         event.preventDefault();
-        self.emit("move", mapped);
+        if (mapped == -1)
+          self.emit("aiStep");
+        else
+          self.emit("move", mapped);
       }
     }
-
     // R key restarts the game
     if (!modifiers && event.which === 82) {
       self.restart.call(self, event);
@@ -73,6 +76,8 @@ KeyboardInputManager.prototype.listen = function () {
   this.bindButtonPress(".restart-button", this.restart);
   this.bindButtonPress(".keep-playing-button", this.keepPlaying);
   this.bindButtonPress(".ai-button", this.ai);
+  this.bindButtonPress(".aiStop-button", this.aiStop);
+  this.bindButtonPress(".aiStep-button", this.aiStep);
 
   // Respond to swipe events
   var touchStartClientX, touchStartClientY;
@@ -143,6 +148,15 @@ KeyboardInputManager.prototype.ai = function (event) {
   this.emit("ai");
 };
 
+KeyboardInputManager.prototype.aiStop = function (event) {
+  //event.preventDefault();
+  this.emit("aiStop");
+};
+
+KeyboardInputManager.prototype.aiStep = function (event) {
+  //event.preventDefault();
+  this.emit("aiStep");
+};
 
 KeyboardInputManager.prototype.bindButtonPress = function (selector, fn) {
   var button = document.querySelector(selector);
