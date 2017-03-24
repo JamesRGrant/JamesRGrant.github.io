@@ -5,11 +5,14 @@ function HTMLActuator() {
   this.messageContainer = document.querySelector(".game-message");
   this.messageDebug = document.querySelector(".debug");
   this.movesAI = document.querySelector(".moves-ai");
+  this.movesML = document.querySelector(".moves-ml");
   this.movesAIPercent = document.querySelector(".moves-ai-percent");
+  this.movesMLPercent = document.querySelector(".moves-ml-percent");
   this.movesHuman = document.querySelector(".moves-human");
 
   this.score = 0;
   this.movecountAI = 0;
+  this.movecountML = 0;
   this.movecountHuman = 0;
 }
 
@@ -32,11 +35,16 @@ HTMLActuator.prototype.actuate = function (grid, metadata) {
 
 
     self.movesAI.textContent = metadata.movecountAI;
+    self.movesML.textContent = metadata.movecountML;
     self.movesHuman.textContent = metadata.movecountHuman;        
-    if (metadata.movecountAI === 0 && metadata.movecountHuman === 0)
+    if (metadata.movecountAI === 0)
       self.movesAIPercent.textContent = "0%"
     else
-      self.movesAIPercent.textContent = Math.round(metadata.movecountAI / (metadata.movecountAI + metadata.movecountHuman) * 100, 2) + "%"
+      self.movesAIPercent.textContent = Math.round(metadata.movecountAI / (metadata.movecountAI + metadata.movecountML + metadata.movecountHuman) * 100, 2) + "%"
+    if (metadata.movecountML === 0)
+      self.movesMLPercent.textContent = "0%"
+    else
+      self.movesMLPercent.textContent = Math.round(metadata.movecountML / (metadata.movecountAI + metadata.movecountML + metadata.movecountHuman) * 100, 2) + "%"
 
     if (metadata.terminated) {
       if (metadata.over) {

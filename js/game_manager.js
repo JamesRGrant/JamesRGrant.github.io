@@ -1,9 +1,12 @@
-function GameManager(size, InputManager, Actuator, StorageManager) {
+//Components.utils.import("resource://gre/modules/ctypes.jsm");
+
+function GameManager(size, InputManager, Actuator, StorageManager, Cloud) {
   this.size           = size; // Size of the grid
   this.inputManager   = new InputManager;
   this.storageManager = new StorageManager;
   this.actuator       = new Actuator;
- 
+  this.cloud          - new Cloud;
+  
   this.startTiles     = 2;
 
   this.inputManager.on("move", this.move.bind(this));
@@ -13,7 +16,8 @@ function GameManager(size, InputManager, Actuator, StorageManager) {
   this.inputManager.on("aiStop", this.aiStop.bind(this));
   this.inputManager.on("aiStep", this.aiStep.bind(this));
   this.aiIsRunning = false;
-
+  this.gameID = 0;
+ 
   this.setup();
 }
 
@@ -48,7 +52,9 @@ GameManager.prototype.setup = function () {
     this.won         = previousState.won;
     this.keepPlaying = previousState.keepPlaying;
     this.movecountAI = previousState.movecountAI;
+    this.movecountML = previousState.movecountML;
     this.movecountHuman = previousState.movecountHuman;
+    this.gameID = previousState.gameID;
   } else {
     this.grid        = new Grid(this.size);
     this.score       = 0;
@@ -56,7 +62,9 @@ GameManager.prototype.setup = function () {
     this.won         = false;
     this.keepPlaying = false;
     this.movecountAI = 0;
+    this.movecountML = 0;
     this.movecountHuman =0;
+    this.gameID = Date.now() + Math.random();
 
     // Add the initial tiles
     this.addStartTiles();
@@ -106,6 +114,7 @@ GameManager.prototype.actuate = function () {
     bestScore:  this.storageManager.getBestScore(),
     terminated: this.isGameTerminated(),
     movecountAI: this.movecountAI,
+    movecountML: this.movecountML,
     movecountHuman: this.movecountHuman
   });
 };
@@ -119,7 +128,9 @@ GameManager.prototype.serialize = function () {
     won:         this.won,
     keepPlaying: this.keepPlaying,
     movecountAI: this.movecountAI,
-    movecountHuman: this.movecountHuman
+    movecountML: this.movecountML,
+    movecountHuman: this.movecountHuman,
+    gameID: this.gameID
   };
 };
 
@@ -141,7 +152,7 @@ GameManager.prototype.moveTile = function (tile, cell) {
 };
 
 // Move tiles on the grid in the specified direction
-GameManager.prototype.move = function (direction, isAI = false) {
+GameManager.prototype.move = function (direction, isAI = false, isML = false) {
   // 0: up, 1: right, 2: down, 3: left
   var self = this;
 
@@ -198,9 +209,30 @@ GameManager.prototype.move = function (direction, isAI = false) {
 
     if (!this.movesAvailable()) {
       this.over = true; // Game over!
-    }
 
-    if (isAI)
+      var lambda = new AWS.Lambda({region: 'us-west-2', apiVersion: '2015-03-31'});
+      var paramData = {"gameID": this.gameID,
+        "score":self.score
+      };
+      var payload = JSON.stringify(paramData);
+      var pullParams = {
+        FunctionName: 'ScoreGame',
+        InvocationType: 'RequestResponse',
+        LogType: 'None',
+        Payload : payload
+      };
+      var pullResults;
+
+      lambda.invoke(pullParams, function(error, data){
+        if (error)
+          console.debug("LamdaFail (ScoreGame): " + error);
+      });
+
+    }
+    //console.log("IsML: " + isML);
+    if (isML)
+      this.movecountML++;
+    else if (isAI)
       this.movecountAI++;
     else {
       this.actuator.debugClear();
@@ -937,21 +969,32 @@ GameManager.prototype.snakeAlgorithm2 = async function(board) {
   var direction = -1;
   var keepLeft, keepUp, keepRight;
 
+  // Slow it down so the user can see it
+  // Self limited by db calls...
+  //await this.sleep(00);
 
-//console.debug("Max at " + x + ", " + y); 
+  AWS.config.region = 'us-west-2'; // Region
+  AWS.config.credentials = new AWS.CognitoIdentityCredentials({
+    IdentityPoolId: 'us-west-2:95b6f5f8-21f3-4da9-942a-1fd15881c911',
+  });
+  //console.debug("Max at " + x + ", " + y); 
  
-  while (moved && this.aiIsRunning)
-  {
+  ///while (moved && this.aiIsRunning)
+  ///{
+   
+
+
     keepLeft = false;
     keepUp = false;
     keepRight = false;
     moved = false;
     direction = -1;
     done = false;
-      x=0;y=0;
+    x=0;y=0;
     
     // Save each move possible so we can find out what is best
     board = this.loadBoard();
+    eboard = this.encodeBoard(board);
     ub = this.testMove2(board, 0);  // Up
     rb = this.testMove2(board, 1);  // Right
     db = this.testMove2(board, 2);  // Down
@@ -964,96 +1007,135 @@ GameManager.prototype.snakeAlgorithm2 = async function(board) {
     }
 
 
-//console.debug(board);  
-//console.debug("U=" + ub);
-//console.debug("R=" + rb);
-//console.debug("D=" + db);
-//console.debug("L=" + lb);
+    //console.debug(board);  
+    //console.debug("U=" + ub);
+    //console.debug("R=" + rb);
+    //console.debug("D=" + db);
+    //console.debug("L=" + lb);
 
 
-      // Assuming starting in the upper left and going right
-      while (direction == -1)  
+    // Assuming starting in the upper left and going right
+    while (direction == -1)  
+    {
+      direction = this.processCell(board, x, y);
+      if (direction == -2)
       {
-        direction = this.processCell(board, x, y);
-        if (direction == -2)
-        {
-          direction = -1;
-          direction = this.processCell(board, x, y + 1);          
+        direction = -1;
+        direction = this.processCell(board, x, y + 1);          
         
-        }
+      }
  
-        // if nothing is done, move to the next cell
-        if (direction == -1)
+      // if nothing is done, move to the next cell
+      if (direction == -1)
+      {
+        if (y == 0 || y == 2)
         {
-          if (y == 0 || y == 2)
+          x++;
+          if (x == 4)
           {
-            x++;
-            if (x == 4)
-            {
-              x--;
-              y++;
-              if (y == 1 && board[0][0] != 0 && board[1][0] != 0 && board[3][0] != 0 && board[3][0] != 0)
-              {
-                keepRight = true;
-                keepLeft = false;
-              }
-            }
-          }
-          else
-          {
+            x--;
+            y++;
             if (y == 1 && board[0][0] != 0 && board[1][0] != 0 && board[3][0] != 0 && board[3][0] != 0)
             {
               keepRight = true;
               keepLeft = false;
             }
-            --x;
-            if (x == -1)
-            {
-              ++x;
-              ++y;
-            }
           }
-          if (y == 4)
-            break;
+        }
+        else
+        {
+          if (y == 1 && board[0][0] != 0 && board[1][0] != 0 && board[3][0] != 0 && board[3][0] != 0)
+          {
+            keepRight = true;
+            keepLeft = false;
+          }
+          --x;
+          if (x == -1)
+          {
+            ++x;
+            ++y;
+          }
+        }
+        if (y == 4)
+          break;
+      }
+    }
+
+    // See if we have move advice!
+    mlDirection = -1;
+    //mlDirection = this.getMoveAdvice(eboard);
+    mlDirection = this.getMoveAdvice(eboard, function(retval) {
+    
+      if (retval != -1)
+      {
+        console.debug("===========>  ML: " + retval + " vs " + direction);
+        moved = this.move(retval, true, true);
+      }
+      else {
+
+        // If untrapping, ignore the safe direction flags
+        if (this.unTrap && direction >= 0)
+        {
+          this.unTrap = false;
+          moved = this.move(direction, true);
+        }
+        else
+        {
+          if (direction == 0)
+            moved = this.move(direction, true);
+        
+          if (direction == 1 && !keepLeft)
+            moved = this.move(direction, true);
+            
+          if (direction == 2 && !keepUp)
+            moved = this.move(direction, true);
+
+          if (direction == 3 && !keepRight)
+            moved = this.move(direction, true);
         }
       }
-
-//console.debug(direction);  
-
-    // If untrapping, ignore the safe direction flags
-    if (this.unTrap && direction >= 0)
-    {
-      this.unTrap = false;
-      moved = this.move(direction, true);
-    }
-    else
-    {
-      if (direction == 0)
-        moved = this.move(direction, true);
-        
-      if (direction == 1 && !keepLeft)
-        moved = this.move(direction, true);
-            
-      if (direction == 2 && !keepUp)
-        moved = this.move(direction, true);
-
-      if (direction == 3 && !keepRight)
-        moved = this.move(direction, true);
-    }
     
-    // If nothing happened, do a random move
-    if (!moved)
-      moved = this.moveRandom();
+      // If nothing happened, do a random move
+      if (!moved)
+        moved = this.moveRandom();
 
-    // If we are just doing a step, bail.  Otherwise, delay a bit.
-    if (this.aiStep)
-    {
-      this.aiStep = false
-      this.aiIsRunning = false;
-    }
-    else
-      await this.sleep(0);
-  }
+      if (moved)
+      {
+        //    console.debug("Game: " + this.gameID);
+        var lambda = new AWS.Lambda({region: 'us-west-2', apiVersion: '2015-03-31'});
+        var paramData = {"gameID": this.gameID,
+          "board":eboard,
+          "move": direction
+        };
+        var payload = JSON.stringify(paramData);
+        //      console.debug(payload);
+        var pullParams = {
+          FunctionName: 'LogMove',
+          InvocationType: 'RequestResponse',
+          LogType: 'None',
+          Payload : payload
+        };
+        var pullResults;
+
+        lambda.invoke(pullParams, function(error, data){
+          if (error)
+            console.debug("LamdaFail: " + error);
+        });
+      }
+
+      // If we are just doing a step, bail.  Otherwise, delay a bit.
+      if (this.aiStep)
+      {
+        this.aiStep = false
+        this.aiIsRunning = false;
+      }
+
+      if (moved && this.aiIsRunning)
+        this.snakeAlgorithm2(board);
+    }.bind(this));  // end getMoveAdvice() callback
+
+
+///  }
 };
 
 
@@ -1083,7 +1165,7 @@ GameManager.prototype.processCell = function(board, x, y) {
   }
   
 if (direction != -1)
-  console.debug("ProcessCell: " + x + ", " + y + ": " + direction); 
+//  console.debug("ProcessCell: " + x + ", " + y + ": " + direction); 
   
   // if nothing is done, check and resolve trapped cell before moving on
   if (direction == -1)
@@ -1093,10 +1175,10 @@ if (direction != -1)
       direction = this.freeTrapped(board, x, y);  
       if (direction == -1)
         direction = -2;
-      console.debug("ProcessCell: " + x + ", " + y + ": " + direction + " (trapped)");
+      //console.debug("ProcessCell: " + x + ", " + y + ": " + direction + " (trapped)");
     }
-    else
-      console.debug("ProcessCell: " + x + ", " + y + ": " + direction);
+    //relse
+      //console.debug("ProcessCell: " + x + ", " + y + ": " + direction);
   }
   return direction;
 };
@@ -1284,6 +1366,64 @@ console.debug(tmpBoard);
 }
 
 
+////////////////////////////////////////////////////////////////////////////////
+// Encode the board into a 64bit number
+GameManager.prototype.encodeBoard = function (board) {
+  var encoded = "";
 
+  for (var i = 0; i < 4; ++i)
+    for (var j = 0; j < 4; ++j) {
+      var k = 0;
+      var val = board[i][j];
+      if (val > 0)
+        k++;
+      while (val > 2) {
+        k++;
+        val = val / 2;
+      }
+      // Truncate the top, rare values, just to economize space
+      if (k > 15)
+        k = 15;
+      encoded += k.toString(16);
+    }
 
+//  console.debug("String:  " + encoded);
+  
+  return encoded;
+}
 
+  ////////////////////////////////////////////////////////////////////////////////
+  // See if there is any advice from the ML cloud db!
+GameManager.prototype.getMoveAdvice = function (eboard, callback) {
+  var direction = -1
+  
+  var params = {
+    TableName: "MoveAdvice",
+    KeyConditions: {
+      "Board": {
+        ComparisonOperator: "EQ",
+        AttributeValueList: [eboard] 
+      }
+    }
+  };
+  
+  var docClient = new AWS.DynamoDB.DocumentClient();
+  docClient.query(params, function (err, data) {
+    if (err) {
+      console.error("Unable to query. Error:", JSON.stringify(err, null, 2));
+      callback(-1);
+    } else {
+      var maxScore = 0;
+
+      data.Items.forEach(function (item) {
+        console.debug("Score: " + item.Score + ", Direction: " + item.Move);
+        if (item.Score > maxScore)
+        {
+          maxScore = item.Score;
+          direction = item.Move;
+        }
+      });
+      callback(direction, this);
+    }
+  });
+}

@@ -527,6 +527,9 @@ hr {
 .moves-ai-label   { display: table-cell; padding: 3px 10px;}
 .moves-ai         { display: table-cell; padding: 3px 10px;}
 .moves-ai-percent { display: table-cell; padding: 3px 10px;}
+.moves-ml-label   { display: table-cell; padding: 3px 10px;}
+.moves-ml         { display: table-cell; padding: 3px 10px;}
+.moves-ml-percent { display: table-cell; padding: 3px 10px;}
 .moves-human-label { display: table-cell; padding: 3px 10px;}
 .moves-human { display: table-cell; padding: 3px 10px;}
 
