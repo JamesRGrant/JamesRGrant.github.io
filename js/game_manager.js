@@ -17,6 +17,7 @@ function GameManager(size, InputManager, Actuator, StorageManager, Cloud) {
   this.inputManager.on("aiStep", this.aiStep.bind(this));
   this.aiIsRunning = false;
   this.gameID = 0;
+  this.isOnline = false;
  
   this.setup();
 }
@@ -75,6 +76,18 @@ GameManager.prototype.setup = function () {
   // Update the actuator
   this.actuate();
   this.actuator.debugClear();
+  
+  // Config AWS
+  try {
+    AWS.config.region = 'us-west-2'; 
+    AWS.config.credentials = new AWS.CognitoIdentityCredentials({
+      IdentityPoolId: 'us-west-2:95b6f5f8-21f3-4da9-942a-1fd15881c911',
+    });
+    this.isOnline = true;
+  }
+  catch  {
+    console.log("Not online.");
+  }
 };
 
 // Set up the initial tiles to start the game with
@@ -210,24 +223,25 @@ GameManager.prototype.move = function (direction, isAI = false, isML = false) {
     if (!this.movesAvailable()) {
       this.over = true; // Game over!
 
-      var lambda = new AWS.Lambda({region: 'us-west-2', apiVersion: '2015-03-31'});
-      var paramData = {"gameID": this.gameID,
-        "score":self.score
-      };
-      var payload = JSON.stringify(paramData);
-      var pullParams = {
-        FunctionName: 'ScoreGame',
-        InvocationType: 'RequestResponse',
-        LogType: 'None',
-        Payload : payload
-      };
-      var pullResults;
+      if (this.isOnline) {
+        var lambda = new AWS.Lambda({region: 'us-west-2', apiVersion: '2015-03-31'});
+        var paramData = {"gameID": this.gameID,
+          "score":self.score
+        };
+        var payload = JSON.stringify(paramData);
+        var pullParams = {
+          FunctionName: 'ScoreGame',
+          InvocationType: 'RequestResponse',
+          LogType: 'None',
+          Payload : payload
+        };
+        var pullResults;
 
-      lambda.invoke(pullParams, function(error, data){
-        if (error)
-          console.debug("LamdaFail (ScoreGame): " + error);
-      });
-
+        lambda.invoke(pullParams, function(error, data){
+          if (error)
+            console.debug("LamdaFail (ScoreGame): " + error);
+        });
+      }
     }
     //console.log("IsML: " + isML);
     if (isML)
@@ -957,185 +971,142 @@ console.debug("Blank from: " + direction);
   return direction;
 };
 
+
 ////////////////////////////////////////////////////////////////////////////////
 // Snake in descending order
 GameManager.prototype.snakeAlgorithm2 = async function(board) {
-  var moved = true;
+  var moved = false;
   var ub, rb, db, rb;
   var cell = this.findLargestValue(board);
-  var x = cell.x;
-  var y = cell.y;
+  var x = 0;
+  var y = 0;
   var done = false;
   var direction = -1;
-  var keepLeft, keepUp, keepRight;
+  var keepLeft = false;
+  var keepUp = false;
+  var keepRight = false;
 
-  // Slow it down so the user can see it
-  // Self limited by db calls...
-  //await this.sleep(00);
+  // If offline, slow it down so the user can see it
+  // If online, AWS calls will slow it down automatically
+  if (!this.isOnline)
+    await this.sleep(100);
+  
+  // Save each move possible so we can find out what is best
+  board = this.loadBoard();
+  eboard = this.encodeBoard(board);
+  ub = this.testMove2(board, 0);  // Up
+  rb = this.testMove2(board, 1);  // Right
+  db = this.testMove2(board, 2);  // Down
+  lb = this.testMove2(board, 3);  // Left
 
-  AWS.config.region = 'us-west-2'; // Region
-  AWS.config.credentials = new AWS.CognitoIdentityCredentials({
-    IdentityPoolId: 'us-west-2:95b6f5f8-21f3-4da9-942a-1fd15881c911',
-  });
-  //console.debug("Max at " + x + ", " + y); 
- 
-  ///while (moved && this.aiIsRunning)
-  ///{
-   
+  if (board[0][0] != 0) {
+    keepUp = true;
+    keepLeft = true;
+  }
+
+  //console.debug(board);  
+  //console.debug("U=" + ub);
+  //console.debug("R=" + rb);
+  //console.debug("D=" + db);
+  //console.debug("L=" + lb);
 
 
-    keepLeft = false;
-    keepUp = false;
-    keepRight = false;
-    moved = false;
-    direction = -1;
-    done = false;
-    x=0;y=0;
-    
-    // Save each move possible so we can find out what is best
-    board = this.loadBoard();
-    eboard = this.encodeBoard(board);
-    ub = this.testMove2(board, 0);  // Up
-    rb = this.testMove2(board, 1);  // Right
-    db = this.testMove2(board, 2);  // Down
-    lb = this.testMove2(board, 3);  // Left
-
-    if (board[0][0] != 0)
-    {
-      keepUp = true;
-      keepLeft = true;
+  // Assuming starting in the upper left and going right
+  while (direction == -1) {
+    direction = this.processCell(board, x, y);
+    if (direction == -2) {
+      direction = -1;
+      direction = this.processCell(board, x, y + 1);          
     }
 
-
-    //console.debug(board);  
-    //console.debug("U=" + ub);
-    //console.debug("R=" + rb);
-    //console.debug("D=" + db);
-    //console.debug("L=" + lb);
-
-
-    // Assuming starting in the upper left and going right
-    while (direction == -1)  
-    {
-      direction = this.processCell(board, x, y);
-      if (direction == -2)
-      {
-        direction = -1;
-        direction = this.processCell(board, x, y + 1);          
-        
-      }
- 
-      // if nothing is done, move to the next cell
-      if (direction == -1)
-      {
-        if (y == 0 || y == 2)
-        {
-          x++;
-          if (x == 4)
-          {
-            x--;
-            y++;
-            if (y == 1 && board[0][0] != 0 && board[1][0] != 0 && board[3][0] != 0 && board[3][0] != 0)
-            {
-              keepRight = true;
-              keepLeft = false;
-            }
-          }
-        }
-        else
-        {
-          if (y == 1 && board[0][0] != 0 && board[1][0] != 0 && board[3][0] != 0 && board[3][0] != 0)
-          {
+    // if nothing is done, move to the next cell
+    if (direction == -1) {
+      if (y == 0 || y == 2) {
+        x++;
+        if (x == 4) {
+          x--;
+          y++;
+          if (y == 1 && board[0][0] != 0 && board[1][0] != 0 && board[3][0] != 0 && board[3][0] != 0) {
             keepRight = true;
             keepLeft = false;
           }
-          --x;
-          if (x == -1)
-          {
-            ++x;
-            ++y;
-          }
         }
-        if (y == 4)
-          break;
-      }
-    }
-
-    // See if we have move advice!
-    mlDirection = -1;
-    //mlDirection = this.getMoveAdvice(eboard);
-    mlDirection = this.getMoveAdvice(eboard, function(retval) {
-    
-      if (retval != -1)
-      {
-        console.debug("===========>  ML: " + retval + " vs " + direction);
-        moved = this.move(retval, true, true);
       }
       else {
+        if (y == 1 && board[0][0] != 0 && board[1][0] != 0 && board[3][0] != 0 && board[3][0] != 0) {
+          keepRight = true;
+          keepLeft = false;
+        }
+        --x;
+        if (x == -1) {
+          ++x;
+          ++y;
+        }
+      }
+      if (y == 4)
+        break;
+    }
+  }
 
-        // If untrapping, ignore the safe direction flags
-        if (this.unTrap && direction >= 0)
-        {
-          this.unTrap = false;
+  // See if we have move advice!
+  mlDirection = -1;
+  mlDirection = this.getMoveAdvice(eboard, function(retval) {
+    if (retval != -1) {
+      console.debug("===========>  ML: " + retval + " vs " + direction);
+      moved = this.move(retval, true, true);
+    }
+    else {
+      // If untrapping, ignore the safe direction flags
+      if (this.unTrap && direction >= 0) {
+        this.unTrap = false;
+        moved = this.move(direction, true);
+      }
+      else {
+        if (direction == 0)
           moved = this.move(direction, true);
-        }
-        else
-        {
-          if (direction == 0)
-            moved = this.move(direction, true);
-        
-          if (direction == 1 && !keepLeft)
-            moved = this.move(direction, true);
-            
-          if (direction == 2 && !keepUp)
-            moved = this.move(direction, true);
-
-          if (direction == 3 && !keepRight)
-            moved = this.move(direction, true);
-        }
+        else if (direction == 1 && !keepLeft)
+          moved = this.move(direction, true);
+        else if (direction == 2 && !keepUp)
+          moved = this.move(direction, true);
+        else if (direction == 3 && !keepRight)
+          moved = this.move(direction, true);
       }
-    
-      // If nothing happened, do a random move
-      if (!moved)
-        moved = this.moveRandom();
+    }
+  
+    // If nothing happened, do a random move
+    if (!moved)
+      moved = this.moveRandom();
 
-      if (moved)
-      {
-        //    console.debug("Game: " + this.gameID);
-        var lambda = new AWS.Lambda({region: 'us-west-2', apiVersion: '2015-03-31'});
-        var paramData = {"gameID": this.gameID,
-          "board":eboard,
-          "move": direction
-        };
-        var payload = JSON.stringify(paramData);
-        //      console.debug(payload);
-        var pullParams = {
-          FunctionName: 'LogMove',
-          InvocationType: 'RequestResponse',
-          LogType: 'None',
-          Payload : payload
-        };
-        var pullResults;
+    if (moved && this.isOnline) {
+      var lambda = new AWS.Lambda({region: 'us-west-2', apiVersion: '2015-03-31'});
+      var paramData = {
+        "gameID": this.gameID,
+        "board":eboard,
+        "move": direction
+      };
+      var payload = JSON.stringify(paramData);
+      var pullParams = {
+        FunctionName: 'LogMove',
+        InvocationType: 'RequestResponse',
+        LogType: 'None',
+        Payload : payload
+      };
 
-        lambda.invoke(pullParams, function(error, data){
-          if (error)
-            console.debug("LamdaFail: " + error);
-        });
-      }
+      lambda.invoke(pullParams, function(error, data) {
+        if (error)
+          console.debug("LamdaFail: " + error);
+      });
+    }
 
-      // If we are just doing a step, bail.  Otherwise, delay a bit.
-      if (this.aiStep)
-      {
-        this.aiStep = false
-        this.aiIsRunning = false;
-      }
+    if (this.aiStep) {
+      this.aiStep = false
+      this.aiIsRunning = false;
+    }
+    else if (moved && this.aiIsRunning)
+      this.snakeAlgorithm2(board);
 
-      if (moved && this.aiIsRunning)
-        this.snakeAlgorithm2(board);
-    }.bind(this));  // end getMoveAdvice() callback
+  }.bind(this));  // end getMoveAdvice() callback
 
-
-///  }
 };
 
 
@@ -1148,37 +1119,34 @@ GameManager.prototype.processCell = function(board, x, y) {
   var db = this.testMove2(board, 2);  // Down
   var lb = this.testMove2(board, 3);  // Left
 
-  // See if the this cell grow
-  if (y == 0 || y == 2)
-  {
-    if (lb[x][y] > board[x][y] && !this.keepRight)
+  // Move to the max growth
+  var max = board[x][y];
+  if (y == 0 || y == 2) {
+    if (lb[x][y] > max && !this.keepRight) {
       direction = 3; // left
-    else if (ub[x][y] > board[x][y])
+      max = lb[x][y];
+    }
+    if (ub[x][y] > max){
       direction = 0; // up
+    }
   }
-  else
-  {
-    if (ub[x][y] > board[x][y])
+  else {
+    if (ub[x][y] > board[x][y]) {
       direction = 0; // up
-    else if (rb[x][y] > board[x][y] && !this.keepLeft)
+      max = ub[x][y];
+    }
+    if (rb[x][y] > max && !this.keepLeft)
       direction = 1; // right
-  }
-  
-if (direction != -1)
-//  console.debug("ProcessCell: " + x + ", " + y + ": " + direction); 
+  } 
   
   // if nothing is done, check and resolve trapped cell before moving on
-  if (direction == -1)
-  {
-    if (this.isTrapped(board, x, y))
-    {
+  if (direction == -1) {
+    if (this.isTrapped(board, x, y)) {
+      console.log("Trapped at [" + x + ", " + y + "]");
       direction = this.freeTrapped(board, x, y);  
       if (direction == -1)
         direction = -2;
-      //console.debug("ProcessCell: " + x + ", " + y + ": " + direction + " (trapped)");
     }
-    //relse
-      //console.debug("ProcessCell: " + x + ", " + y + ": " + direction);
   }
   return direction;
 };
@@ -1334,32 +1302,27 @@ GameManager.prototype.freeTrapped = function(board, x, y) {
   var tmpBoard;
 
   // Try and free under it
-  if (y == 0 || y == 2)
-  {
+  if (y == 0 || y == 2) {
     tmpBoard = this.testMove2(board, 3); // Left
 console.debug(tmpBoard);
     if (tmpBoard[x][y + 1] < board[x][y ] && board != tmpBoard)
       direction = 3;
-    else   
-    {
+    else {
       tmpBoard = this.testMove2(board, 1); // Right
       if (tmpBoard[x][y + 1] < board[x][y ] && board != tmpBoard)
         direction = 1;
     }
   }
-  if (y == 1)
-  {
+  if (y == 1) {
     tmpBoard = this.testMove2(board, 1); // Right
     if (tmpBoard[x][y + 1] < board[x][y ] && board != tmpBoard)
       direction = 1;
-    else   
-    {
+    else {
       tmpBoard = this.testMove2(board, 3); // Left
       if (tmpBoard[x][y + 1] < board[x][y ] && board != tmpBoard)
         direction = 3;
     }
   }
-  
   this.unTrap = true;
 
   return direction;
@@ -1397,33 +1360,38 @@ GameManager.prototype.encodeBoard = function (board) {
 GameManager.prototype.getMoveAdvice = function (eboard, callback) {
   var direction = -1
   
-  var params = {
-    TableName: "MoveAdvice",
-    KeyConditions: {
-      "Board": {
-        ComparisonOperator: "EQ",
-        AttributeValueList: [eboard] 
-      }
-    }
-  };
-  
-  var docClient = new AWS.DynamoDB.DocumentClient();
-  docClient.query(params, function (err, data) {
-    if (err) {
-      console.error("Unable to query. Error:", JSON.stringify(err, null, 2));
-      callback(-1);
-    } else {
-      var maxScore = 0;
-
-      data.Items.forEach(function (item) {
-        console.debug("Score: " + item.Score + ", Direction: " + item.Move);
-        if (item.Score > maxScore)
-        {
-          maxScore = item.Score;
-          direction = item.Move;
+  if (this.isOnline) {
+    var params = {
+      TableName: "MoveAdvice",
+      KeyConditions: {
+        "Board": {
+          ComparisonOperator: "EQ",
+          AttributeValueList: [eboard] 
         }
-      });
-      callback(direction, this);
-    }
-  });
+      }
+    };
+    
+    var docClient = new AWS.DynamoDB.DocumentClient();
+    docClient.query(params, function (err, data) {
+      if (err) {
+        console.error("Unable to query. Error:", JSON.stringify(err, null, 2));
+        callback(-1);
+      } else {
+        var maxScore = 0;
+
+        data.Items.forEach(function (item) {
+          console.debug("Score: " + item.Score + ", Direction: " + item.Move);
+          if (item.Score > maxScore)
+          {
+            maxScore = item.Score;
+            direction = item.Move;
+          }
+        });
+        callback(direction, this);
+      }
+    });
+  }
+  else {
+    callback(direction, this);
+  }
 }
